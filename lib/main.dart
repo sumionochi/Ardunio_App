@@ -1,101 +1,99 @@
+import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue/flutter_blue.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 
-void main() => runApp(MyApp());
+void main() => runApp(const MyApp());
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  List<BluetoothDevice> _devices = [];
+  late BluetoothConnection connection;
+  String address = "00:21:07:00:50:69"; // your Bluetooth device MAC Address
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    List<BluetoothDevice> devices = await FlutterBluetoothSerial.instance.getBondedDevices();
+    setState(() {
+      _devices = devices;
+    });
+  }
+
+  Future<void> sendData(String data) async {
+    data = data.trim();
+    try {
+      List<int> list = data.codeUnits;
+      Uint8List bytes = Uint8List.fromList(list);
+      connection.output.add(bytes);
+      await connection.output.allSent;
+      if (kDebugMode) {
+        // print('Data sent successfully');
+      }
+    } catch (e) {
+      //print(e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Arduino HC-05',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: HomePage(),
-    );
-  }
-}
-
-class HomePage extends StatefulWidget {
-  @override
-  _HomePageState createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  FlutterBlue flutterBlue = FlutterBlue.instance;
-  BluetoothDevice? _device;
-  BluetoothCharacteristic? _characteristic;
-  List<BluetoothService>? _services;
-
-  void connectToDevice() async {
-    // Start scanning
-    flutterBlue.startScan(timeout: Duration(seconds: 4));
-
-    // Listen to scan results
-    // ignore: unused_local_variable
-    var subscription = flutterBlue.scanResults.listen((results) {
-      for (ScanResult r in results) {
-        if (r.device.name == 'HC-05') {
-          setState(() {
-            _device = r.device;
-          });
-          flutterBlue.stopScan();
-          connect(_device!);
-          break;
-        }
-      }
-    });
-  }
-
-  void connect(BluetoothDevice device) async {
-    await device.connect();
-    _services = await device.discoverServices();
-    setState(() {
-      _services = _services;
-    });
-
-    for (BluetoothService service in _services!) {
-      for (BluetoothCharacteristic c in service.characteristics) {
-        if (c.properties.notify || c.properties.read) {
-          _characteristic = c;
-          c.value.listen((value) {
-            print('Received: ${String.fromCharCodes(value)}');
-          });
-          await c.setNotifyValue(true);
-        }
-      }
-    }
-  }
-
-  void sendMessage(String message) async {
-    if (_characteristic != null) {
-      await _characteristic!.write(message.codeUnits);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Flutter Arduino HC-05'),
-      ),
-      body: Column(
-        children: <Widget>[
-          ElevatedButton(
-            onPressed: connectToDevice,
-            child: Text('Connect to HC-05'),
-          ),
-          if (_device != null)
-            Text('Connected to: ${_device!.name}'),
-          if (_characteristic != null)
-            TextField(
-              onSubmitted: sendMessage,
-              decoration: InputDecoration(
-                labelText: 'Send a message',
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text("Bluetooth Single LED Control"),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("MAC Address: 00:22:09:01:86:17"),
+              ElevatedButton(
+                child: const Text("Connect"),
+                onPressed: () {
+                  connect(address);
+                },
               ),
-            ),
-        ],
+              const SizedBox(height: 30.0),
+              ElevatedButton(
+                child: const Text(" OPEN "),
+                onPressed: () {
+                  sendData("on");
+                },
+              ),
+              const SizedBox(height: 10.0),
+              ElevatedButton(
+                child: const Text("CLOSE"),
+                onPressed: () {
+                  sendData("off");
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Future connect(String address) async {
+    try {
+      connection = await BluetoothConnection.toAddress(address);
+      sendData('111');
+      connection.input!.listen((Uint8List data) {
+        // Data entry point
+      });
+    } catch (exception) {
+      // Handle connection exception
+    }
   }
 }
