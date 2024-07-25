@@ -15,8 +15,10 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   List<BluetoothDevice> _devices = [];
+  BluetoothDevice? _selectedDevice;
   late BluetoothConnection connection;
-  String address = "00:21:07:00:50:69"; // your Bluetooth device MAC Address
+  List<String> messages = [];
+  final TextEditingController _textController = TextEditingController();
 
   @override
   void initState() {
@@ -28,21 +30,27 @@ class _MyAppState extends State<MyApp> {
     List<BluetoothDevice> devices = await FlutterBluetoothSerial.instance.getBondedDevices();
     setState(() {
       _devices = devices;
+      if (_devices.isNotEmpty) {
+        _selectedDevice = _devices.first;
+      }
     });
   }
 
-  Future<void> sendData(String data) async {
+  Future<void> _sendData(String data) async {
     data = data.trim();
     try {
       List<int> list = data.codeUnits;
       Uint8List bytes = Uint8List.fromList(list);
       connection.output.add(bytes);
       await connection.output.allSent;
+      setState(() {
+        messages.add("Me: $data");
+      });
       if (kDebugMode) {
-        // print('Data sent successfully');
+        print('Data sent successfully');
       }
     } catch (e) {
-      //print(e.toString());
+      print(e.toString());
     }
   }
 
@@ -51,49 +59,88 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text("Bluetooth Single LED Control"),
+          title: const Text("Bluetooth Chat"),
         ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text("MAC Address: 00:22:09:01:86:17"),
-              ElevatedButton(
-                child: const Text("Connect"),
-                onPressed: () {
-                  connect(address);
+        body: Column(
+          children: [
+            if (_devices.isNotEmpty)
+              DropdownButton<BluetoothDevice>(
+                value: _selectedDevice,
+                onChanged: (BluetoothDevice? newValue) {
+                  setState(() {
+                    _selectedDevice = newValue!;
+                  });
+                },
+                items: _devices.map<DropdownMenuItem<BluetoothDevice>>((BluetoothDevice device) {
+                  return DropdownMenuItem<BluetoothDevice>(
+                    value: device,
+                    child: Text(device.name ?? device.address),
+                  );
+                }).toList(),
+              )
+            else
+              const Text("No bonded devices found"),
+            ElevatedButton(
+              child: const Text("Connect"),
+              onPressed: () {
+                if (_selectedDevice != null) {
+                  _connect(_selectedDevice!.address);
+                }
+              },
+            ),
+            const SizedBox(height: 10.0),
+            Expanded(
+              child: ListView.builder(
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    title: Text(messages[index]),
+                  );
                 },
               ),
-              const SizedBox(height: 30.0),
-              ElevatedButton(
-                child: const Text(" OPEN "),
-                onPressed: () {
-                  sendData("on");
-                },
+            ),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      decoration: const InputDecoration(
+                        labelText: 'Enter message',
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: () {
+                      if (_textController.text.isNotEmpty) {
+                        _sendData(_textController.text);
+                        _textController.clear();
+                      }
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 10.0),
-              ElevatedButton(
-                child: const Text("CLOSE"),
-                onPressed: () {
-                  sendData("off");
-                },
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Future connect(String address) async {
+  Future<void> _connect(String address) async {
     try {
       connection = await BluetoothConnection.toAddress(address);
-      sendData('111');
+      _sendData('Connected');
       connection.input!.listen((Uint8List data) {
-        // Data entry point
+        String receivedData = String.fromCharCodes(data);
+        setState(() {
+          messages.add("Device: $receivedData");
+        });
       });
     } catch (exception) {
-      // Handle connection exception
+      print("Cannot connect, exception occurred: $exception");
     }
   }
 }
